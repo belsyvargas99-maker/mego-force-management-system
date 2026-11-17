@@ -160,7 +160,8 @@ Antes de tocar la CSP, revisa los pasos 5 y 6: el error más común es no haber 
 
 ## Pendientes técnicos
 
-- **package-lock.json**: todavía no está versionado. Actions lo genera en cada run con `npm install` y lo guarda como artefacto (`package-lock`) durante 30 días. Conviene descargarlo de un run verde y subirlo al repositorio; luego se puede cambiar `npm install` por `npm ci` en el workflow y el Dockerfile para que las versiones no cambien solas.
+- **package-lock.json**: todavía no está versionado. Actions lo genera en cada run con `npm install` y lo guarda como artefacto (`package-lock`) durante 30 días. Conviene descargarlo de un run verde y subirlo al repositorio; luego se puede cambiar `npm install` por `npm ci` en el workflow y en la primera etapa del Dockerfile para que las versiones no cambien solas.
+- **Dockerfile**: solo se instalan dependencias una vez, en la etapa de compilación. Después de lint, build y tests se ejecuta `npm prune --omit=dev` y la imagen final copia ese `node_modules` ya podado (no corre `npm ci` ni `npm install`). Por eso todo paquete que el servidor use en producción debe estar en `dependencies`, no en `devDependencies`.
 - `bun.lock` queda en el repo como referencia, pero Docker lo ignora (se usa npm).
 
 ## Probarlo en una PC (opcional)
