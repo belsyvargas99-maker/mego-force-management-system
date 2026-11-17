@@ -57,6 +57,14 @@ export function ImageUploader({
       'image/svg+xml': ['.svg'],
     },
     maxSize: 5 * 1024 * 1024,
+    onDropRejected: (rejections) => {
+      const tooBig = rejections.some((r) => r.errors.some((e) => e.code === 'file-too-large'));
+      toast.error(
+        tooBig
+          ? 'La imagen supera el límite de 5 MB. Reduce su tamaño e inténtalo de nuevo.'
+          : 'Formato no compatible. Usa PNG, JPG, WEBP o SVG.'
+      );
+    },
     disabled: uploading,
   });
 

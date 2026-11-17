@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist dist-server",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/utils/logic.test.ts src/utils/appMode.test.ts firestore.rules.test.ts server.test.ts server.security.test.ts"
+    "test": "tsx --test src/utils/logic.test.ts src/utils/appMode.test.ts src/utils/uploadFallback.test.ts firestore.rules.test.ts server.test.ts server.security.test.ts"
   },
   "dependencies": {
     "express": "^4.21.2",

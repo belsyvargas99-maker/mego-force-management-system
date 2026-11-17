@@ -3,6 +3,7 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, getAdminAuthHeaders, storage } from '../config/firebase';
 import type { MockupImage } from '../types/mego';
 import { generateEntityId } from '../utils/normalizers';
+import { runWithFallback } from '../utils/uploadFallback';
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -31,12 +32,9 @@ export async function uploadMockupImage(
   let downloadURL = '';
   let storagePath = `mockups/${contractId}/${assetId}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-  // Try Firebase Storage first, fallback cleanly to local Express upload endpoint
-  try {
-    const storageRef = ref(storage, storagePath);
-    const uploadResult = await uploadBytes(storageRef, file, { contentType: file.type });
-    downloadURL = await getDownloadURL(uploadResult.ref);
-  } catch {
+  // Firebase Storage primero (con tiempo máximo) y, si falla o se cuelga, subida al
+  // servidor propio (/api/uploads/mockup, solo administradores).
+  const uploadToServer = async () => {
     const dataUrl = await readFileAsDataUrl(file);
     const authHeaders = await getAdminAuthHeaders();
     const res = await fetch('/api/uploads/mockup', {
@@ -44,13 +42,31 @@ export async function uploadMockupImage(
       headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify({ fileName: file.name, dataUrl }),
     });
-    const json = await res.json();
+    const json = await res.json().catch(() => null);
     if (!res.ok) {
-      throw new Error(json?.error || 'Error al subir la imagen del mockup.');
+      throw new Error(
+        json?.error ||
+          (res.status === 413
+            ? 'La imagen es demasiado grande para subirla.'
+            : `No se pudo subir la imagen (error ${res.status}).`)
+      );
     }
-    downloadURL = json.url;
-    storagePath = json.storagePath;
-  }
+    if (!json?.url) {
+      throw new Error('El servidor no devolvió la dirección de la imagen.');
+    }
+    return { url: String(json.url), path: String(json.storagePath || storagePath) };
+  };
+
+  const stored = await runWithFallback(
+    async () => {
+      const storageRef = ref(storage, storagePath);
+      const uploadResult = await uploadBytes(storageRef, file, { contentType: file.type });
+      return { url: await getDownloadURL(uploadResult.ref), path: storagePath };
+    },
+    uploadToServer
+  );
+  downloadURL = stored.url;
+  storagePath = stored.path;
 
   // Record asset metadata in Firestore if contractId is already persisted
   if (contractId && !contractId.startsWith('draft_')) {
