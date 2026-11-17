@@ -114,7 +114,7 @@ export function createDefaultFormConfig(
     requireReviewStep: true,
     fields: DEFAULT_FORM_FIELDS.map((f) => ({
       ...f,
-      options: f.options ? [...f.options] : undefined,
+      ...(f.options ? { options: [...f.options] } : {}),
     })),
   };
 }

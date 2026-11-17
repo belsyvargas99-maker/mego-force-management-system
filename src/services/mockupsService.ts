@@ -1,4 +1,8 @@
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import {
+  doc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { setDoc } from './firestoreSafe';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, getAdminAuthHeaders, storage } from '../config/firebase';
 import type { MockupImage } from '../types/mego';

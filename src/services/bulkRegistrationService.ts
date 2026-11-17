@@ -6,10 +6,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
-  updateDoc,
-  writeBatch,
 } from 'firebase/firestore';
+import { setDoc, updateDoc, writeBatch } from './firestoreSafe';
 import { db } from '../config/firebase';
 import type { BulkSubmissionRecord, PublicContract } from '../types/mego';
 import type { BulkRowDraft } from '../utils/bulkValidation';

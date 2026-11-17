@@ -7,9 +7,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
-  updateDoc,
 } from 'firebase/firestore';
+import { setDoc, updateDoc } from './firestoreSafe';
 import { db } from '../config/firebase';
 import type { AdminRole, AuthorizedAdmin, GlobalSettings, UserProfile } from '../types/mego';
 import { DEFAULT_GLOBAL_SETTINGS } from '../utils/defaultForm';

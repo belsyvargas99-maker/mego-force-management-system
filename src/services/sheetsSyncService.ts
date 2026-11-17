@@ -6,9 +6,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
-  updateDoc,
 } from 'firebase/firestore';
+import { setDoc, updateDoc } from './firestoreSafe';
 import { db, getGoogleAccessToken, getSheetsRequestHeaders } from '../config/firebase';
 import type { Contract, Registration, SyncJob, SyncJobStatus } from '../types/mego';
 import { generateEntityId } from '../utils/normalizers';

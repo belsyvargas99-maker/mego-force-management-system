@@ -6,8 +6,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  writeBatch,
 } from 'firebase/firestore';
+import { writeBatch } from './firestoreSafe';
 import { db, getAdminAuthHeaders } from '../config/firebase';
 import type {
   Contract,

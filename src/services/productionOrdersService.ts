@@ -5,9 +5,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
-  updateDoc,
 } from 'firebase/firestore';
+import { setDoc, updateDoc } from './firestoreSafe';
 import { db } from '../config/firebase';
 import type {
   Contract,

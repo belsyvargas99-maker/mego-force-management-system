@@ -6,11 +6,10 @@ import {
   onSnapshot,
   orderBy,
   query,
-  runTransaction,
   serverTimestamp,
   where,
-  writeBatch,
 } from 'firebase/firestore';
+import { runTransaction, writeBatch } from './firestoreSafe';
 import { db } from '../config/firebase';
 import type {
   AuditChange,

@@ -6,9 +6,9 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
   where,
 } from 'firebase/firestore';
+import { setDoc } from './firestoreSafe';
 import { db } from '../config/firebase';
 import type { AuditChange, AuditLog } from '../types/mego';
 import { generateEntityId } from '../utils/normalizers';

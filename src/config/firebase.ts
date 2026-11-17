@@ -7,7 +7,7 @@ import {
   signOut,
   type User,
 } from 'firebase/auth';
-import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
+import { doc, getDocFromServer, initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -19,7 +19,9 @@ export const WORKSPACE_SCOPES = [
 const app = initializeApp(firebaseConfig);
 const databaseId =
   (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId || '(default)';
-export const db = getFirestore(app, databaseId);
+// ignoreUndefinedProperties: segunda defensa; los servicios ademas limpian los datos con
+// stripUndefined (src/services/firestoreSafe.ts) antes de escribir.
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true }, databaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
