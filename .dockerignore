@@ -1,0 +1,23 @@
+# Lo que NO entra al contexto de Docker
+node_modules
+dist
+dist-server
+coverage
+build
+public/uploads
+.env
+.env.*
+!.env.example
+service-account*.json
+*.pem
+*.key
+*.log
+.git
+.github
+.claude
+.aistudio
+public/assets/aistudio/Paste_November_16__2026_-_6_18PM_5b874d7d
+bun.lock
+docker-compose.yml
+hostinger-compose.yml
+DEPLOY.md

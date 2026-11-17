@@ -1,0 +1,35 @@
+# Compose generico (cualquier servidor con Docker). Para Hostinger usa hostinger-compose.yml.
+# Uso local:  docker compose up -d --build   ->   http://localhost:3000
+services:
+  mego-force-app:
+    build:
+      context: .
+      args:
+        VITE_PUBLIC_HOST: ${VITE_PUBLIC_HOST:-mego-registro.systemagencygarciavargas.tech}
+        VITE_ADMIN_HOST: ${VITE_ADMIN_HOST:-mego-admin.systemagencygarciavargas.tech}
+    image: mego-force-management-system:local
+    container_name: mego-force-app
+    init: true
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - PUBLIC_HOST=${PUBLIC_HOST:-mego-registro.systemagencygarciavargas.tech}
+      - ADMIN_HOST=${ADMIN_HOST:-mego-admin.systemagencygarciavargas.tech}
+      # Vacio: localhost = portal + panel; cualquier otro host desconocido = public.
+      - APP_MODE=${APP_MODE:-}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-belsyvargas99@gmail.com}
+      - CSP_REPORT_ONLY=${CSP_REPORT_ONLY:-false}
+    volumes:
+      - mego_uploads:/app/public/uploads
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  mego_uploads:

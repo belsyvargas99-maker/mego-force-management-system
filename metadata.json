@@ -1,0 +1,6 @@
+{
+  "name": "MEGO FORCE Management System",
+  "description": "Sistema privado de gestión de contratos, pedidos de uniformes, formularios dinámicos, registros de participantes, control de producción y sincronización con Google Sheets para MEGO FORCE.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

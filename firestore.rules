@@ -1,0 +1,761 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Hardened Primitives
+    // -------------------------------------------------------------------------
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailDocId(id) {
+      return id is string && id.size() >= 3 && id.size() <= 254 && id.matches('^[a-zA-Z0-9_.+\\-@]+$');
+    }
+
+    function isNonEmptyString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isOptionalString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    function isValidStringList(listVal, maxItems) {
+      return listVal is list
+        && listVal.size() <= maxItems
+        && (listVal.size() == 0 || (listVal[0] is string && listVal[0].size() <= 160));
+    }
+
+    function isBootstrapAdmin() {
+      return isVerified() && request.auth.token.email == 'belsyvargas99@gmail.com';
+    }
+
+    function isAuthorizedAdminDoc() {
+      return isVerified()
+        && request.auth.token.email is string
+        && request.auth.token.email.size() <= 254
+        && exists(/databases/$(database)/documents/authorizedAdmins/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/authorizedAdmins/$(request.auth.token.email)).data.active == true;
+    }
+
+    function isAdmin() {
+      return isBootstrapAdmin() || isAuthorizedAdminDoc();
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints
+    // -------------------------------------------------------------------------
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'active', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'active', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && isNonEmptyString(data.email, 3, 254)
+        && (!('displayName' in data) || isOptionalString(data.displayName, 120))
+        && data.role in ['super_admin', 'admin', 'operator']
+        && data.active is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuthorizedAdmin(data) {
+      return data.keys().hasAll(['email', 'role', 'active', 'addedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['email', 'role', 'active', 'addedBy', 'createdAt', 'updatedAt'])
+        && isNonEmptyString(data.email, 3, 254)
+        && data.role in ['super_admin', 'admin', 'operator']
+        && data.active is bool
+        && isNonEmptyString(data.addedBy, 1, 254)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidContract(data) {
+      return data.keys().hasAll([
+          'contractId', 'contractCode', 'organizationName', 'title', 'garmentType',
+          'status', 'publicToken', 'availableSizes', 'mockupImages', 'formConfig',
+          'totalParticipants', 'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'contractId', 'contractCode', 'organizationName', 'title', 'description',
+          'garmentType', 'garmentFeatures', 'status', 'startDate', 'endDate',
+          'openDate', 'openTime', 'closeDate', 'closeTime', 'timezone',
+          'closedMessage', 'closedAt', 'closeReason', 'scheduleHistory',
+          'bulkRegistrationEnabled', 'individualRegistrationEnabled',
+          'individualLinkExpiresAt', 'bulkLinkExpiresAt', 'currency', 'unitPrice', 'additionalGarments',
+          'bulkToken',
+          'publicToken', 'availableSizes', 'mockupImages', 'formConfig', 'sheetsConfig',
+          'totalParticipants', 'sizeCounts', 'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.contractId)
+        && isNonEmptyString(data.contractCode, 2, 40)
+        && isNonEmptyString(data.organizationName, 1, 160)
+        && isNonEmptyString(data.title, 1, 180)
+        && (!('description' in data) || isOptionalString(data.description, 4000))
+        && isNonEmptyString(data.garmentType, 1, 120)
+        && (!('garmentFeatures' in data) || isValidStringList(data.garmentFeatures, 30))
+        && data.status in ['draft', 'scheduled', 'active', 'paused', 'auto_closed', 'closed', 'finished', 'archived']
+        && (!('startDate' in data) || isOptionalString(data.startDate, 40))
+        && (!('endDate' in data) || isOptionalString(data.endDate, 40))
+        && (!('openDate' in data) || isOptionalString(data.openDate, 20))
+        && (!('openTime' in data) || isOptionalString(data.openTime, 10))
+        && (!('closeDate' in data) || isOptionalString(data.closeDate, 20))
+        && (!('closeTime' in data) || isOptionalString(data.closeTime, 10))
+        && (!('timezone' in data) || isOptionalString(data.timezone, 80))
+        && (!('closedMessage' in data) || isOptionalString(data.closedMessage, 600))
+        && (!('closedAt' in data) || isOptionalString(data.closedAt, 40))
+        && (!('closeReason' in data) || isOptionalString(data.closeReason, 400))
+        && (!('scheduleHistory' in data) || (data.scheduleHistory is list && data.scheduleHistory.size() <= 40))
+        && (!('bulkRegistrationEnabled' in data) || data.bulkRegistrationEnabled is bool)
+        && (!('individualRegistrationEnabled' in data) || data.individualRegistrationEnabled is bool)
+        && (!('individualLinkExpiresAt' in data) || isOptionalString(data.individualLinkExpiresAt, 40))
+        && (!('bulkLinkExpiresAt' in data) || isOptionalString(data.bulkLinkExpiresAt, 40))
+        && (!('currency' in data) || isOptionalString(data.currency, 12))
+        && (!('unitPrice' in data) || (data.unitPrice is number && data.unitPrice >= 0))
+        && (!('additionalGarments' in data) || isValidStringList(data.additionalGarments, 15))
+        && (!('bulkToken' in data) || (data.bulkToken is string && data.bulkToken.size() <= 64 && data.bulkToken.matches('^[a-zA-Z0-9_\\-]*$')))
+        && isValidId(data.publicToken) && data.publicToken.size() >= 8 && data.publicToken.size() <= 64
+        && isValidStringList(data.availableSizes, 25)
+        && data.mockupImages is list && data.mockupImages.size() <= 30
+        && data.formConfig is map
+        && (!('sheetsConfig' in data) || data.sheetsConfig is map)
+        && data.totalParticipants is number && data.totalParticipants >= 0
+        && (!('sizeCounts' in data) || data.sizeCounts is map)
+        && isValidId(data.createdBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPublicContract(data) {
+      return data.keys().hasAll([
+          'publicToken', 'contractId', 'contractCode', 'organizationName', 'title',
+          'garmentType', 'status', 'availableSizes', 'mockupImages', 'formConfig',
+          'totalParticipants', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'publicToken', 'contractId', 'contractCode', 'organizationName', 'title',
+          'description', 'garmentType', 'garmentFeatures', 'status', 'startDate',
+          'endDate', 'openDate', 'openTime', 'closeDate', 'closeTime', 'timezone',
+          'closedMessage', 'bulkRegistrationEnabled', 'individualRegistrationEnabled',
+          'individualLinkExpiresAt', 'bulkLinkExpiresAt', 'currency', 'unitPrice', 'additionalGarments',
+          'bulkToken',
+          'availableSizes', 'mockupImages', 'formConfig', 'totalParticipants',
+          'sizeCounts', 'updatedAt'
+        ])
+        && isValidId(data.publicToken) && data.publicToken.size() >= 8 && data.publicToken.size() <= 64
+        && isValidId(data.contractId)
+        && isNonEmptyString(data.contractCode, 2, 40)
+        && isNonEmptyString(data.organizationName, 1, 160)
+        && isNonEmptyString(data.title, 1, 180)
+        && (!('description' in data) || isOptionalString(data.description, 4000))
+        && isNonEmptyString(data.garmentType, 1, 120)
+        && (!('garmentFeatures' in data) || isValidStringList(data.garmentFeatures, 30))
+        && data.status in ['draft', 'scheduled', 'active', 'paused', 'auto_closed', 'closed', 'finished', 'archived']
+        && (!('startDate' in data) || isOptionalString(data.startDate, 40))
+        && (!('endDate' in data) || isOptionalString(data.endDate, 40))
+        && (!('openDate' in data) || isOptionalString(data.openDate, 20))
+        && (!('openTime' in data) || isOptionalString(data.openTime, 10))
+        && (!('closeDate' in data) || isOptionalString(data.closeDate, 20))
+        && (!('closeTime' in data) || isOptionalString(data.closeTime, 10))
+        && (!('timezone' in data) || isOptionalString(data.timezone, 80))
+        && (!('closedMessage' in data) || isOptionalString(data.closedMessage, 600))
+        && (!('bulkRegistrationEnabled' in data) || data.bulkRegistrationEnabled is bool)
+        && (!('individualRegistrationEnabled' in data) || data.individualRegistrationEnabled is bool)
+        && (!('individualLinkExpiresAt' in data) || isOptionalString(data.individualLinkExpiresAt, 40))
+        && (!('bulkLinkExpiresAt' in data) || isOptionalString(data.bulkLinkExpiresAt, 40))
+        && (!('currency' in data) || isOptionalString(data.currency, 12))
+        && (!('unitPrice' in data) || (data.unitPrice is number && data.unitPrice >= 0))
+        && (!('additionalGarments' in data) || isValidStringList(data.additionalGarments, 15))
+        && (!('bulkToken' in data) || (data.bulkToken is string && data.bulkToken.size() <= 64 && data.bulkToken.matches('^[a-zA-Z0-9_\\-]*$')))
+        && isValidStringList(data.availableSizes, 25)
+        && data.mockupImages is list && data.mockupImages.size() <= 30
+        && data.formConfig is map
+        && data.totalParticipants is number && data.totalParticipants >= 0
+        && (!('sizeCounts' in data) || data.sizeCounts is map)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPublicBulkContractLink(data) {
+      return data.keys().hasAll(['bulkToken', 'publicToken', 'contractId', 'enabled', 'updatedAt'])
+        && data.keys().hasOnly(['bulkToken', 'publicToken', 'contractId', 'enabled', 'updatedAt'])
+        && isValidId(data.bulkToken) && data.bulkToken.size() >= 8 && data.bulkToken.size() <= 64
+        && isValidId(data.publicToken) && data.publicToken.size() >= 8 && data.publicToken.size() <= 64
+        && isValidId(data.contractId)
+        && data.enabled is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRegistration(data) {
+      return data.keys().hasAll([
+          'registrationId', 'registrationCode', 'contractId', 'publicToken', 'fullName',
+          'identificationNumber', 'identificationHash', 'size', 'phone',
+          'paymentSelection', 'paymentVerificationStatus', 'privacyAccepted',
+          'registrationTimestamp', 'registrationStatus', 'source', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'registrationId', 'registrationCode', 'contractId', 'publicToken', 'fullName',
+          'identificationNumber', 'identificationHash', 'size', 'nickname', 'phone',
+          'instagram', 'paymentSelection', 'paymentVerificationStatus', 'paymentAmount',
+          'paymentNotes', 'customFields', 'garmentItems', 'privacyAccepted', 'registrationTimestamp',
+          'registrationStatus', 'registrationMode', 'bulkSubmissionId', 'representativeName',
+          'source', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.registrationId)
+        && isValidId(data.registrationCode) && data.registrationCode.size() >= 4 && data.registrationCode.size() <= 32
+        && isValidId(data.contractId)
+        && isValidId(data.publicToken) && data.publicToken.size() >= 8 && data.publicToken.size() <= 64
+        && isNonEmptyString(data.fullName, 2, 160)
+        && isNonEmptyString(data.identificationNumber, 3, 40)
+        && isNonEmptyString(data.identificationHash, 16, 128) && data.identificationHash.matches('^[a-zA-Z0-9]+$')
+        && isNonEmptyString(data.size, 1, 24)
+        && (!('nickname' in data) || isOptionalString(data.nickname, 60))
+        && isNonEmptyString(data.phone, 5, 40)
+        && (!('instagram' in data) || isOptionalString(data.instagram, 80))
+        && data.paymentSelection in ['PAGO COMPLETO', 'PAGO PARCIAL']
+        && data.paymentVerificationStatus in ['pending', 'verified', 'rejected']
+        && (!('paymentAmount' in data) || (data.paymentAmount is number && data.paymentAmount >= 0))
+        && (!('paymentNotes' in data) || isOptionalString(data.paymentNotes, 500))
+        && (!('customFields' in data) || data.customFields is map)
+        && (!('garmentItems' in data) || (data.garmentItems is list && data.garmentItems.size() <= 20))
+        && data.privacyAccepted is bool && data.privacyAccepted == true
+        && data.registrationTimestamp is timestamp
+        && data.registrationStatus in ['confirmed', 'cancelled', 'edited']
+        && (!('registrationMode' in data) || data.registrationMode in ['individual', 'bulk'])
+        && (!('bulkSubmissionId' in data) || isOptionalString(data.bulkSubmissionId, 128))
+        && (!('representativeName' in data) || isOptionalString(data.representativeName, 160))
+        && data.source in ['public_form', 'bulk_representative', 'admin_manual', 'excel_import']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRegistrationLock(data) {
+      return data.keys().hasAll([
+          'contractId', 'identificationHash', 'registrationId', 'registrationCode',
+          'maskedId', 'displayName', 'size', 'paymentSelection',
+          'paymentVerificationStatus', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'contractId', 'identificationHash', 'registrationId', 'registrationCode',
+          'maskedId', 'displayName', 'size', 'nickname', 'paymentSelection',
+          'paymentVerificationStatus', 'createdAt'
+        ])
+        && isValidId(data.contractId)
+        && isNonEmptyString(data.identificationHash, 16, 128) && data.identificationHash.matches('^[a-zA-Z0-9]+$')
+        && isValidId(data.registrationId)
+        && isValidId(data.registrationCode) && data.registrationCode.size() >= 4 && data.registrationCode.size() <= 32
+        && isNonEmptyString(data.maskedId, 2, 32)
+        && isNonEmptyString(data.displayName, 1, 160)
+        && isNonEmptyString(data.size, 1, 24)
+        && (!('nickname' in data) || isOptionalString(data.nickname, 60))
+        && data.paymentSelection in ['PAGO COMPLETO', 'PAGO PARCIAL']
+        && data.paymentVerificationStatus in ['pending', 'verified', 'rejected']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidBulkSubmission(data) {
+      return data.keys().hasAll([
+          'submissionId', 'idempotencyKey', 'contractId', 'publicToken', 'bulkToken',
+          'representativeName', 'organizationName', 'totalEntered', 'totalValid',
+          'totalRejected', 'totalSaved', 'pendingSyncCount', 'registrationCodes',
+          'rejectedReasons', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'submissionId', 'idempotencyKey', 'contractId', 'publicToken', 'bulkToken',
+          'representativeName', 'representativeContact', 'organizationName',
+          'totalEntered', 'totalValid', 'totalRejected', 'totalDuplicates', 'totalSaved', 'pendingSyncCount',
+          'registrationCodes', 'rejectedReasons', 'status', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.submissionId)
+        && isValidId(data.idempotencyKey) && data.idempotencyKey.size() >= 8
+        && isValidId(data.contractId)
+        && isValidId(data.publicToken) && data.publicToken.size() >= 8 && data.publicToken.size() <= 64
+        && isValidId(data.bulkToken) && data.bulkToken.size() >= 8 && data.bulkToken.size() <= 64
+        && isNonEmptyString(data.representativeName, 2, 160)
+        && (!('representativeContact' in data) || isOptionalString(data.representativeContact, 120))
+        && isNonEmptyString(data.organizationName, 1, 160)
+        && data.totalEntered is number && data.totalEntered >= 0 && data.totalEntered <= 2000
+        && data.totalValid is number && data.totalValid >= 0 && data.totalValid <= 2000
+        && data.totalRejected is number && data.totalRejected >= 0 && data.totalRejected <= 2000
+        && (!('totalDuplicates' in data) || (data.totalDuplicates is number && data.totalDuplicates >= 0 && data.totalDuplicates <= 2000))
+        && data.totalSaved is number && data.totalSaved >= 0 && data.totalSaved <= 2000
+        && data.pendingSyncCount is number && data.pendingSyncCount >= 0 && data.pendingSyncCount <= 2000
+        && data.registrationCodes is list && data.registrationCodes.size() <= 500
+        && data.rejectedReasons is list && data.rejectedReasons.size() <= 200
+        && data.status in ['processing', 'completed', 'partial']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProductionOrder(data) {
+      return data.keys().hasAll([
+          'orderId', 'orderCode', 'contractId', 'contractCode', 'contractTitle',
+          'organizationName', 'garmentType', 'status', 'version', 'isFrozen',
+          'totalGarments', 'availableSizes', 'sizeSummary', 'snapshotItems',
+          'responsibleUid', 'responsibleName', 'versionHistory', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'orderId', 'orderCode', 'contractId', 'contractCode', 'contractTitle',
+          'organizationName', 'garmentType', 'status', 'version', 'isFrozen',
+          'totalGarments', 'availableSizes', 'sizeSummary', 'snapshotItems',
+          'observations', 'responsibleUid', 'responsibleName', 'approvedByEmail',
+          'approvedAt', 'versionHistory', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.orderId)
+        && isNonEmptyString(data.orderCode, 3, 60)
+        && isValidId(data.contractId)
+        && isNonEmptyString(data.contractCode, 2, 40)
+        && isNonEmptyString(data.contractTitle, 1, 180)
+        && isNonEmptyString(data.organizationName, 1, 160)
+        && isNonEmptyString(data.garmentType, 1, 120)
+        && data.status in ['draft', 'in_review', 'approved', 'in_production', 'completed', 'delivered']
+        && data.version is number && data.version >= 1 && data.version <= 500
+        && data.isFrozen is bool
+        && data.totalGarments is number && data.totalGarments >= 0 && data.totalGarments <= 5000
+        && isValidStringList(data.availableSizes, 25)
+        && data.sizeSummary is map
+        && data.snapshotItems is list && data.snapshotItems.size() <= 2000
+        && (!('observations' in data) || isOptionalString(data.observations, 2000))
+        && isValidId(data.responsibleUid)
+        && isNonEmptyString(data.responsibleName, 1, 160)
+        && (!('approvedByEmail' in data) || isOptionalString(data.approvedByEmail, 254))
+        && (!('approvedAt' in data) || isOptionalString(data.approvedAt, 40))
+        && data.versionHistory is list && data.versionHistory.size() <= 100
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSyncJob(data) {
+      return data.keys().hasAll(['jobId', 'contractId', 'destination', 'status', 'attempts', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'jobId', 'contractId', 'registrationId', 'destination', 'status',
+          'attempts', 'lastAttemptAt', 'errorMessage', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.jobId)
+        && isValidId(data.contractId)
+        && (!('registrationId' in data) || isOptionalString(data.registrationId, 128))
+        && data.destination == 'google_sheets'
+        && data.status in ['pending', 'synced', 'error', 'retrying']
+        && data.attempts is number && data.attempts >= 0 && data.attempts <= 100
+        && (!('lastAttemptAt' in data) || data.lastAttemptAt is timestamp)
+        && (!('errorMessage' in data) || isOptionalString(data.errorMessage, 600))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['logId', 'userId', 'userEmail', 'action', 'entityType', 'entityId', 'changedFields', 'createdAt'])
+        && data.keys().hasOnly(['logId', 'userId', 'userEmail', 'action', 'entityType', 'entityId', 'changedFields', 'createdAt'])
+        && isValidId(data.logId)
+        && isValidId(data.userId)
+        && isNonEmptyString(data.userEmail, 3, 254)
+        && isNonEmptyString(data.action, 2, 80)
+        && data.entityType in ['contract', 'registration', 'payment', 'form', 'settings', 'user', 'sync', 'import', 'bulk_submission', 'production_order', 'schedule']
+        && isValidId(data.entityId)
+        && data.changedFields is list && data.changedFields.size() <= 50
+        && data.createdAt is timestamp;
+    }
+
+    function isValidAsset(data) {
+      return data.keys().hasAll(['assetId', 'contractId', 'storagePath', 'downloadURL', 'fileType', 'order', 'isPrimary', 'createdAt'])
+        && data.keys().hasOnly(['assetId', 'contractId', 'storagePath', 'downloadURL', 'fileType', 'caption', 'order', 'isPrimary', 'createdAt'])
+        && isValidId(data.assetId)
+        && isValidId(data.contractId)
+        && isNonEmptyString(data.storagePath, 1, 500)
+        && isNonEmptyString(data.downloadURL, 1, 2000)
+        && isNonEmptyString(data.fileType, 1, 80)
+        && (!('caption' in data) || isOptionalString(data.caption, 240))
+        && data.order is number && data.order >= 0
+        && data.isPrimary is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidGlobalSettings(data) {
+      return data.keys().hasAll(['brandName', 'primaryColor', 'accentColor', 'defaultSizes', 'privacyPolicyText', 'updatedAt'])
+        && data.keys().hasOnly([
+          'brandName', 'logoUrl', 'primaryColor', 'accentColor', 'displayFont',
+          'bodyFont', 'contactEmail', 'contactPhone', 'defaultSizes', 'dateFormat',
+          'timezone', 'privacyPolicyText', 'defaultConfirmationMessage', 'updatedAt'
+        ])
+        && isNonEmptyString(data.brandName, 1, 100)
+        && (!('logoUrl' in data) || isOptionalString(data.logoUrl, 2000))
+        && isNonEmptyString(data.primaryColor, 3, 24)
+        && isNonEmptyString(data.accentColor, 3, 24)
+        && (!('displayFont' in data) || isOptionalString(data.displayFont, 80))
+        && (!('bodyFont' in data) || isOptionalString(data.bodyFont, 80))
+        && (!('contactEmail' in data) || isOptionalString(data.contactEmail, 254))
+        && (!('contactPhone' in data) || isOptionalString(data.contactPhone, 40))
+        && isValidStringList(data.defaultSizes, 25)
+        && (!('dateFormat' in data) || isOptionalString(data.dateFormat, 40))
+        && (!('timezone' in data) || isOptionalString(data.timezone, 80))
+        && isNonEmptyString(data.privacyPolicyText, 1, 4000)
+        && (!('defaultConfirmationMessage' in data) || isOptionalString(data.defaultConfirmationMessage, 1000))
+        && data.updatedAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Rules
+    // -------------------------------------------------------------------------
+
+    // Connection health check doc
+    match /test/{docId} {
+      allow get: if isValidId(docId) && docId == 'connection';
+      allow list, write: if false;
+    }
+
+    // Users collection (PII isolated to admin or self)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isAdmin() || (isVerified() && request.auth.uid == userId));
+      allow list: if isAdmin();
+      allow create: if isValidId(userId)
+        && isAdmin()
+        && isValidUserProfile(incoming())
+        && incoming().uid == userId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isAdmin()
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role', 'active', 'updatedAt']);
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // Authorized Admin email allowlist (strictly admin-managed)
+    match /authorizedAdmins/{emailId} {
+      allow get: if isValidEmailDocId(emailId) && (isAdmin() || (isVerified() && request.auth.token.email == emailId));
+      allow list: if isAdmin();
+      allow create: if isValidEmailDocId(emailId)
+        && isAdmin()
+        && isValidAuthorizedAdmin(incoming())
+        && incoming().email == emailId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidEmailDocId(emailId)
+        && isAdmin()
+        && isValidAuthorizedAdmin(incoming())
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'active', 'updatedAt']);
+      allow delete: if isValidEmailDocId(emailId) && isAdmin() && emailId != 'belsyvargas99@gmail.com';
+    }
+
+    // Private Contracts collection (strictly admin-only)
+    match /contracts/{contractId} {
+      allow get: if isValidId(contractId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(contractId)
+        && isAdmin()
+        && isValidContract(incoming())
+        && incoming().contractId == contractId
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(contractId)
+        && isAdmin()
+        && isValidContract(incoming())
+        && incoming().contractId == existing().contractId
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'contractCode', 'organizationName', 'title', 'description', 'garmentType',
+          'garmentFeatures', 'status', 'startDate', 'endDate',
+          'openDate', 'openTime', 'closeDate', 'closeTime', 'timezone',
+          'closedMessage', 'closedAt', 'closeReason', 'scheduleHistory',
+          'bulkRegistrationEnabled', 'individualRegistrationEnabled',
+          'individualLinkExpiresAt', 'bulkLinkExpiresAt', 'currency', 'unitPrice', 'additionalGarments', 'bulkToken',
+          'publicToken', 'availableSizes', 'mockupImages', 'formConfig', 'sheetsConfig',
+          'totalParticipants', 'sizeCounts', 'updatedAt'
+        ]);
+      allow delete: if isValidId(contractId) && isAdmin();
+    }
+
+    // Public Contracts projection (single-doc get by unguessable publicToken, NEVER listable)
+    match /publicContracts/{publicToken} {
+      allow get: if isValidId(publicToken);
+      allow list: if false;
+      allow create: if isValidId(publicToken)
+        && isAdmin()
+        && isValidPublicContract(incoming())
+        && incoming().publicToken == publicToken
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(publicToken)
+        && isValidPublicContract(incoming())
+        && incoming().publicToken == existing().publicToken
+        && incoming().contractId == existing().contractId
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
+            'contractCode', 'organizationName', 'title', 'description', 'garmentType',
+            'garmentFeatures', 'status', 'startDate', 'endDate',
+            'openDate', 'openTime', 'closeDate', 'closeTime', 'timezone',
+            'closedMessage', 'bulkRegistrationEnabled', 'individualRegistrationEnabled',
+            'individualLinkExpiresAt', 'bulkLinkExpiresAt', 'currency', 'unitPrice', 'additionalGarments', 'bulkToken',
+            'availableSizes', 'mockupImages', 'formConfig', 'totalParticipants', 'sizeCounts', 'updatedAt'
+          ]))
+          || (
+            existing().status == 'active'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['totalParticipants', 'updatedAt'])
+            && incoming().totalParticipants >= existing().totalParticipants + 1
+            && incoming().totalParticipants <= existing().totalParticipants + 100
+          )
+        );
+      allow delete: if isValidId(publicToken) && isAdmin();
+    }
+
+    // Public Bulk Organization Link Mapping (single-doc get by bulkToken, NEVER listable)
+    match /publicBulkContracts/{bulkToken} {
+      allow get: if isValidId(bulkToken);
+      allow list: if false;
+      allow create, update: if isValidId(bulkToken)
+        && isAdmin()
+        && isValidPublicBulkContractLink(incoming())
+        && incoming().bulkToken == bulkToken
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(bulkToken) && isAdmin();
+    }
+
+    // Registrations (strictly admin-only reads; public create requires active contract + atomic lock)
+    match /registrations/{registrationId} {
+      allow get: if isValidId(registrationId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(registrationId)
+        && isValidRegistration(incoming())
+        && incoming().registrationId == registrationId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().registrationTimestamp == request.time
+        && (
+          isAdmin()
+          || (
+            incoming().paymentVerificationStatus == 'pending'
+            && incoming().registrationStatus == 'confirmed'
+            && exists(/databases/$(database)/documents/publicContracts/$(incoming().publicToken))
+            && get(/databases/$(database)/documents/publicContracts/$(incoming().publicToken)).data.contractId == incoming().contractId
+            && get(/databases/$(database)/documents/publicContracts/$(incoming().publicToken)).data.status == 'active'
+            && existsAfter(/databases/$(database)/documents/registrationLocks/$(incoming().contractId + '_' + incoming().identificationHash))
+            && (
+              (incoming().source == 'public_form' && (!('individualRegistrationEnabled' in get(/databases/$(database)/documents/publicContracts/$(incoming().publicToken)).data) || get(/databases/$(database)/documents/publicContracts/$(incoming().publicToken)).data.individualRegistrationEnabled == true))
+              || (
+                incoming().source == 'bulk_representative'
+                && incoming().registrationMode == 'bulk'
+                && 'bulkSubmissionId' in incoming()
+                && get(/databases/$(database)/documents/publicContracts/$(incoming().publicToken)).data.bulkRegistrationEnabled == true
+              )
+            )
+          )
+        );
+      allow update: if isValidId(registrationId)
+        && isAdmin()
+        && isValidRegistration(incoming())
+        && incoming().registrationId == existing().registrationId
+        && incoming().contractId == existing().contractId
+        && incoming().createdAt == existing().createdAt
+        && incoming().registrationTimestamp == existing().registrationTimestamp
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'fullName', 'identificationNumber', 'identificationHash', 'size', 'nickname',
+          'phone', 'instagram', 'paymentSelection', 'paymentVerificationStatus',
+          'paymentAmount', 'paymentNotes', 'customFields', 'garmentItems', 'registrationStatus', 'updatedAt'
+        ]);
+      allow delete: if isValidId(registrationId) && isAdmin();
+    }
+
+    // Registration Duplicate Locks & Privacy-Safe Confirmation Lookup (never listable)
+    match /registrationLocks/{lockId} {
+      allow get: if isValidId(lockId);
+      allow list: if false;
+      allow create: if isValidId(lockId)
+        && isValidRegistrationLock(incoming())
+        && incoming().createdAt == request.time
+        && (
+          lockId == incoming().contractId + '_' + incoming().identificationHash
+          || lockId == incoming().contractId + '_' + incoming().registrationCode
+        )
+        && existsAfter(/databases/$(database)/documents/registrations/$(incoming().registrationId));
+      allow update: if isValidId(lockId)
+        && isAdmin()
+        && isValidRegistrationLock(incoming())
+        && incoming().contractId == existing().contractId
+        && incoming().registrationId == existing().registrationId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'size', 'nickname', 'paymentSelection', 'paymentVerificationStatus'
+        ]);
+      allow delete: if isValidId(lockId) && isAdmin();
+    }
+
+    // Bulk Organization Submission Receipts & Idempotency Locks (never listable publicly)
+    match /bulkSubmissions/{submissionId} {
+      allow get: if isValidId(submissionId);
+      allow list: if isAdmin();
+      allow create: if isValidId(submissionId)
+        && isValidBulkSubmission(incoming())
+        && incoming().submissionId == submissionId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            exists(/databases/$(database)/documents/publicContracts/$(incoming().publicToken))
+            && get(/databases/$(database)/documents/publicContracts/$(incoming().publicToken)).data.contractId == incoming().contractId
+            && get(/databases/$(database)/documents/publicContracts/$(incoming().publicToken)).data.status == 'active'
+            && get(/databases/$(database)/documents/publicContracts/$(incoming().publicToken)).data.bulkRegistrationEnabled == true
+          )
+        );
+      allow update: if isValidId(submissionId)
+        && isValidBulkSubmission(incoming())
+        && incoming().submissionId == existing().submissionId
+        && incoming().contractId == existing().contractId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            existing().status == 'processing'
+            && incoming().idempotencyKey == existing().idempotencyKey
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'totalSaved', 'totalRejected', 'totalDuplicates', 'pendingSyncCount', 'registrationCodes', 'rejectedReasons', 'status', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(submissionId) && isAdmin();
+    }
+
+    // Production Manufacturing Orders (strictly admin-only, immutable snapshot once approved/frozen)
+    match /productionOrders/{orderId} {
+      allow get: if isValidId(orderId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(orderId)
+        && isAdmin()
+        && isValidProductionOrder(incoming())
+        && incoming().orderId == orderId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(orderId)
+        && isAdmin()
+        && isValidProductionOrder(incoming())
+        && incoming().orderId == existing().orderId
+        && incoming().contractId == existing().contractId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            existing().isFrozen == false
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'isFrozen', 'totalGarments', 'availableSizes', 'sizeSummary',
+              'snapshotItems', 'observations', 'approvedByEmail', 'approvedAt',
+              'versionHistory', 'updatedAt'
+            ])
+          )
+          || (
+            existing().isFrozen == true
+            && incoming().isFrozen == true
+            && incoming().version == existing().version
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'observations', 'versionHistory', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(orderId) && isAdmin();
+    }
+
+    // Google Sheets Sync Queue
+    match /syncJobs/{jobId} {
+      allow get: if isValidId(jobId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(jobId)
+        && isValidSyncJob(incoming())
+        && incoming().jobId == jobId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            incoming().status == 'pending'
+            && incoming().attempts == 0
+            && 'registrationId' in incoming()
+            && existsAfter(/databases/$(database)/documents/registrations/$(incoming().registrationId))
+          )
+        );
+      allow update: if isValidId(jobId)
+        && isAdmin()
+        && isValidSyncJob(incoming())
+        && incoming().jobId == existing().jobId
+        && incoming().contractId == existing().contractId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'status', 'attempts', 'lastAttemptAt', 'errorMessage', 'updatedAt'
+        ]);
+      allow delete: if isValidId(jobId) && isAdmin();
+    }
+
+    // Immutable Audit Logs (admin create & read only)
+    match /auditLogs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(logId)
+        && isAdmin()
+        && isValidAuditLog(incoming())
+        && incoming().logId == logId
+        && incoming().userId == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // Uploaded Mockup Assets Metadata
+    match /assets/{assetId} {
+      allow get: if isValidId(assetId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(assetId)
+        && isAdmin()
+        && isValidAsset(incoming())
+        && incoming().assetId == assetId
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(assetId)
+        && isAdmin()
+        && isValidAsset(incoming())
+        && incoming().assetId == existing().assetId
+        && incoming().contractId == existing().contractId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'order', 'isPrimary']);
+      allow delete: if isValidId(assetId) && isAdmin();
+    }
+
+    // Global Settings (public read on 'global' for branding & privacy text, admin write)
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId) && (settingId == 'global' || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isValidId(settingId)
+        && settingId == 'global'
+        && isAdmin()
+        && isValidGlobalSettings(incoming())
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+  }
+}

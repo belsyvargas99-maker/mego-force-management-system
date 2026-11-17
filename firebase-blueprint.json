@@ -1,0 +1,474 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user profile and administrative role assignment.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 254 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["super_admin", "admin", "operator"] },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "active", "createdAt", "updatedAt"]
+    },
+    "AuthorizedAdmin": {
+      "title": "AuthorizedAdmin",
+      "description": "Allowlist entry authorizing an email address for administrative access.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "minLength": 3, "maxLength": 254 },
+        "role": { "type": "string", "enum": ["super_admin", "admin", "operator"] },
+        "active": { "type": "boolean" },
+        "addedBy": { "type": "string", "minLength": 1, "maxLength": 254 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "active", "addedBy", "createdAt", "updatedAt"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "Private administrative contract document containing uniform specs, schedule automation, bulk config, form config, and Google Sheets sync configuration.",
+      "type": "object",
+      "properties": {
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractCode": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "organizationName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "garmentType": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "garmentFeatures": { "type": "array" },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "scheduled", "active", "paused", "auto_closed", "closed", "finished", "archived"]
+        },
+        "startDate": { "type": "string", "maxLength": 40 },
+        "endDate": { "type": "string", "maxLength": 40 },
+        "openDate": { "type": "string", "maxLength": 20 },
+        "openTime": { "type": "string", "maxLength": 10 },
+        "closeDate": { "type": "string", "maxLength": 20 },
+        "closeTime": { "type": "string", "maxLength": 10 },
+        "timezone": { "type": "string", "maxLength": 80 },
+        "closedMessage": { "type": "string", "maxLength": 600 },
+        "closedAt": { "type": "string", "maxLength": 40 },
+        "closeReason": { "type": "string", "maxLength": 400 },
+        "scheduleHistory": { "type": "array" },
+        "bulkRegistrationEnabled": { "type": "boolean" },
+        "individualRegistrationEnabled": { "type": "boolean" },
+        "individualLinkExpiresAt": { "type": "string", "maxLength": 40 },
+        "bulkLinkExpiresAt": { "type": "string", "maxLength": 40 },
+        "currency": { "type": "string", "maxLength": 12 },
+        "unitPrice": { "type": "number" },
+        "additionalGarments": { "type": "array" },
+        "bulkToken": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]*$" },
+        "publicToken": { "type": "string", "minLength": 8, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "availableSizes": { "type": "array" },
+        "mockupImages": { "type": "array" },
+        "formConfig": { "type": "object" },
+        "sheetsConfig": { "type": "object" },
+        "totalParticipants": { "type": "number" },
+        "sizeCounts": { "type": "object" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "contractId",
+        "contractCode",
+        "organizationName",
+        "title",
+        "garmentType",
+        "status",
+        "publicToken",
+        "availableSizes",
+        "mockupImages",
+        "formConfig",
+        "totalParticipants",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PublicContract": {
+      "title": "PublicContract",
+      "description": "Publicly accessible contract presentation projection keyed by unguessable publicToken without private admin or sync metadata.",
+      "type": "object",
+      "properties": {
+        "publicToken": { "type": "string", "minLength": 8, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractCode": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "organizationName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "garmentType": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "garmentFeatures": { "type": "array" },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "scheduled", "active", "paused", "auto_closed", "closed", "finished", "archived"]
+        },
+        "startDate": { "type": "string", "maxLength": 40 },
+        "endDate": { "type": "string", "maxLength": 40 },
+        "openDate": { "type": "string", "maxLength": 20 },
+        "openTime": { "type": "string", "maxLength": 10 },
+        "closeDate": { "type": "string", "maxLength": 20 },
+        "closeTime": { "type": "string", "maxLength": 10 },
+        "timezone": { "type": "string", "maxLength": 80 },
+        "closedMessage": { "type": "string", "maxLength": 600 },
+        "bulkRegistrationEnabled": { "type": "boolean" },
+        "individualRegistrationEnabled": { "type": "boolean" },
+        "individualLinkExpiresAt": { "type": "string", "maxLength": 40 },
+        "bulkLinkExpiresAt": { "type": "string", "maxLength": 40 },
+        "currency": { "type": "string", "maxLength": 12 },
+        "unitPrice": { "type": "number" },
+        "additionalGarments": { "type": "array" },
+        "bulkToken": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]*$" },
+        "availableSizes": { "type": "array" },
+        "mockupImages": { "type": "array" },
+        "formConfig": { "type": "object" },
+        "totalParticipants": { "type": "number" },
+        "sizeCounts": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "publicToken",
+        "contractId",
+        "contractCode",
+        "organizationName",
+        "title",
+        "garmentType",
+        "status",
+        "availableSizes",
+        "mockupImages",
+        "formConfig",
+        "totalParticipants",
+        "updatedAt"
+      ]
+    },
+    "PublicBulkContractLink": {
+      "title": "PublicBulkContractLink",
+      "description": "Maps unguessable bulkToken to contract publicToken for organization representatives.",
+      "type": "object",
+      "properties": {
+        "bulkToken": { "type": "string", "minLength": 8, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "publicToken": { "type": "string", "minLength": 8, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "enabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bulkToken", "publicToken", "contractId", "enabled", "updatedAt"]
+    },
+    "Registration": {
+      "title": "Registration",
+      "description": "Participant uniform order registration containing personal identification and customization data (admin-only read).",
+      "type": "object",
+      "properties": {
+        "registrationId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "registrationCode": { "type": "string", "minLength": 4, "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "publicToken": { "type": "string", "minLength": 8, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "identificationNumber": { "type": "string", "minLength": 3, "maxLength": 40 },
+        "identificationHash": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[a-zA-Z0-9]+$" },
+        "size": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "nickname": { "type": "string", "maxLength": 60 },
+        "phone": { "type": "string", "minLength": 5, "maxLength": 40 },
+        "instagram": { "type": "string", "maxLength": 80 },
+        "paymentSelection": { "type": "string", "enum": ["PAGO COMPLETO", "PAGO PARCIAL"] },
+        "paymentVerificationStatus": { "type": "string", "enum": ["pending", "verified", "rejected"] },
+        "paymentAmount": { "type": "number" },
+        "paymentNotes": { "type": "string", "maxLength": 500 },
+        "customFields": { "type": "object" },
+        "garmentItems": { "type": "array" },
+        "privacyAccepted": { "type": "boolean" },
+        "registrationTimestamp": { "type": "string", "format": "date-time" },
+        "registrationStatus": { "type": "string", "enum": ["confirmed", "cancelled", "edited"] },
+        "registrationMode": { "type": "string", "enum": ["individual", "bulk"] },
+        "bulkSubmissionId": { "type": "string", "maxLength": 128 },
+        "representativeName": { "type": "string", "maxLength": 160 },
+        "source": { "type": "string", "enum": ["public_form", "bulk_representative", "admin_manual", "excel_import"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "registrationId",
+        "registrationCode",
+        "contractId",
+        "publicToken",
+        "fullName",
+        "identificationNumber",
+        "identificationHash",
+        "size",
+        "phone",
+        "paymentSelection",
+        "paymentVerificationStatus",
+        "privacyAccepted",
+        "registrationTimestamp",
+        "registrationStatus",
+        "source",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "RegistrationLock": {
+      "title": "RegistrationLock",
+      "description": "Atomic duplicate-prevention lock and privacy-safe masked confirmation lookup keyed by contractId_identificationHash.",
+      "type": "object",
+      "properties": {
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "identificationHash": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[a-zA-Z0-9]+$" },
+        "registrationId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "registrationCode": { "type": "string", "minLength": 4, "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "maskedId": { "type": "string", "minLength": 2, "maxLength": 32 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "size": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "nickname": { "type": "string", "maxLength": 60 },
+        "paymentSelection": { "type": "string", "enum": ["PAGO COMPLETO", "PAGO PARCIAL"] },
+        "paymentVerificationStatus": { "type": "string", "enum": ["pending", "verified", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "contractId",
+        "identificationHash",
+        "registrationId",
+        "registrationCode",
+        "maskedId",
+        "displayName",
+        "size",
+        "paymentSelection",
+        "paymentVerificationStatus",
+        "createdAt"
+      ]
+    },
+    "BulkSubmissionRecord": {
+      "title": "BulkSubmissionRecord",
+      "description": "Idempotent bulk organization submission receipt and metrics record.",
+      "type": "object",
+      "properties": {
+        "submissionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "idempotencyKey": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "publicToken": { "type": "string", "minLength": 8, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "bulkToken": { "type": "string", "minLength": 8, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "representativeName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "representativeContact": { "type": "string", "maxLength": 120 },
+        "organizationName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "totalEntered": { "type": "number" },
+        "totalValid": { "type": "number" },
+        "totalRejected": { "type": "number" },
+        "totalDuplicates": { "type": "number" },
+        "totalSaved": { "type": "number" },
+        "pendingSyncCount": { "type": "number" },
+        "registrationCodes": { "type": "array" },
+        "rejectedReasons": { "type": "array" },
+        "status": { "type": "string", "enum": ["processing", "completed", "partial"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "submissionId",
+        "idempotencyKey",
+        "contractId",
+        "publicToken",
+        "bulkToken",
+        "representativeName",
+        "organizationName",
+        "totalEntered",
+        "totalValid",
+        "totalRejected",
+        "totalSaved",
+        "pendingSyncCount",
+        "registrationCodes",
+        "rejectedReasons",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ProductionOrder": {
+      "title": "ProductionOrder",
+      "description": "Manufacturing work order generated from confirmed participants with versioned immutable approval snapshots.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderCode": { "type": "string", "minLength": 3, "maxLength": 60 },
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractCode": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "contractTitle": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "organizationName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "garmentType": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "in_review", "approved", "in_production", "completed", "delivered"]
+        },
+        "version": { "type": "number" },
+        "isFrozen": { "type": "boolean" },
+        "totalGarments": { "type": "number" },
+        "availableSizes": { "type": "array" },
+        "sizeSummary": { "type": "object" },
+        "snapshotItems": { "type": "array" },
+        "observations": { "type": "string", "maxLength": 2000 },
+        "responsibleUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "responsibleName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "approvedByEmail": { "type": "string", "maxLength": 254 },
+        "approvedAt": { "type": "string", "maxLength": 40 },
+        "versionHistory": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "orderId",
+        "orderCode",
+        "contractId",
+        "contractCode",
+        "contractTitle",
+        "organizationName",
+        "garmentType",
+        "status",
+        "version",
+        "isFrozen",
+        "totalGarments",
+        "availableSizes",
+        "sizeSummary",
+        "snapshotItems",
+        "responsibleUid",
+        "responsibleName",
+        "versionHistory",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SyncJob": {
+      "title": "SyncJob",
+      "description": "Google Sheets synchronization queue entry with retry state tracking.",
+      "type": "object",
+      "properties": {
+        "jobId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "registrationId": { "type": "string", "maxLength": 128 },
+        "destination": { "type": "string", "enum": ["google_sheets"] },
+        "status": { "type": "string", "enum": ["pending", "synced", "error", "retrying"] },
+        "attempts": { "type": "number" },
+        "lastAttemptAt": { "type": "string", "format": "date-time" },
+        "errorMessage": { "type": "string", "maxLength": 600 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["jobId", "contractId", "destination", "status", "attempts", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable administrative audit trail recording every creation, modification, or deletion.",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userEmail": { "type": "string", "minLength": 3, "maxLength": 254 },
+        "action": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "entityType": {
+          "type": "string",
+          "enum": ["contract", "registration", "payment", "form", "settings", "user", "sync", "import", "bulk_submission", "production_order", "schedule"]
+        },
+        "entityId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "changedFields": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["logId", "userId", "userEmail", "action", "entityType", "entityId", "changedFields", "createdAt"]
+    },
+    "AssetRecord": {
+      "title": "AssetRecord",
+      "description": "Uploaded uniform mockup image metadata linked to a contract.",
+      "type": "object",
+      "properties": {
+        "assetId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storagePath": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "downloadURL": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "fileType": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "caption": { "type": "string", "maxLength": 240 },
+        "order": { "type": "number" },
+        "isPrimary": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["assetId", "contractId", "storagePath", "downloadURL", "fileType", "order", "isPrimary", "createdAt"]
+    },
+    "GlobalSettings": {
+      "title": "GlobalSettings",
+      "description": "Editable global branding, typography, localization, privacy policy, and sync defaults.",
+      "type": "object",
+      "properties": {
+        "brandName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "logoUrl": { "type": "string", "maxLength": 2000 },
+        "primaryColor": { "type": "string", "maxLength": 24 },
+        "accentColor": { "type": "string", "maxLength": 24 },
+        "displayFont": { "type": "string", "maxLength": 80 },
+        "bodyFont": { "type": "string", "maxLength": 80 },
+        "contactEmail": { "type": "string", "maxLength": 254 },
+        "contactPhone": { "type": "string", "maxLength": 40 },
+        "defaultSizes": { "type": "array" },
+        "dateFormat": { "type": "string", "maxLength": 40 },
+        "timezone": { "type": "string", "maxLength": 80 },
+        "privacyPolicyText": { "type": "string", "maxLength": 4000 },
+        "defaultConfirmationMessage": { "type": "string", "maxLength": 1000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["brandName", "primaryColor", "accentColor", "defaultSizes", "privacyPolicyText", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Authenticated admin user profiles and active status."
+    },
+    "/authorizedAdmins/{emailId}": {
+      "schema": { "$ref": "#/entities/AuthorizedAdmin" },
+      "description": "Authorized admin email allowlist managed strictly by existing admins."
+    },
+    "/contracts/{contractId}": {
+      "schema": { "$ref": "#/entities/Contract" },
+      "description": "Private full contract records managed by authenticated admins."
+    },
+    "/publicContracts/{publicToken}": {
+      "schema": { "$ref": "#/entities/PublicContract" },
+      "description": "Public contract projection keyed by unguessable random token."
+    },
+    "/publicBulkContracts/{bulkToken}": {
+      "schema": { "$ref": "#/entities/PublicBulkContractLink" },
+      "description": "Public lookup mapping unguessable bulkToken to contract publicToken."
+    },
+    "/registrations/{registrationId}": {
+      "schema": { "$ref": "#/entities/Registration" },
+      "description": "Participant registration documents with strict admin-only read access."
+    },
+    "/registrationLocks/{lockId}": {
+      "schema": { "$ref": "#/entities/RegistrationLock" },
+      "description": "Atomic duplicate-prevention lock & masked confirmation lookup."
+    },
+    "/bulkSubmissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/BulkSubmissionRecord" },
+      "description": "Idempotent bulk organization submission receipt and processing status."
+    },
+    "/productionOrders/{orderId}": {
+      "schema": { "$ref": "#/entities/ProductionOrder" },
+      "description": "Versioned manufacturing orders with immutable approved snapshots."
+    },
+    "/syncJobs/{jobId}": {
+      "schema": { "$ref": "#/entities/SyncJob" },
+      "description": "Google Sheets synchronization job queue and retry status."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable administrative audit logs."
+    },
+    "/assets/{assetId}": {
+      "schema": { "$ref": "#/entities/AssetRecord" },
+      "description": "Mockup image asset metadata."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/GlobalSettings" },
+      "description": "Global application branding and default configuration."
+    }
+  }
+}

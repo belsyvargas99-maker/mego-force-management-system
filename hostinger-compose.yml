@@ -1,0 +1,58 @@
+# Compose para el Docker Manager de Hostinger. Se cuelga del Traefik del proyecto
+# "n8n" (misma red n8n_default, mismo resolver de certificados mytlschallenge).
+# Un solo contenedor sirve los dos subdominios:
+#   https://mego-registro.systemagencygarciavargas.tech  -> portal publico (clientes)
+#   https://mego-admin.systemagencygarciavargas.tech     -> panel administrativo
+services:
+  mego-force-app:
+    image: ghcr.io/belsyvargas99-maker/mego-force-management-system:latest
+    container_name: mego-force-app
+    init: true
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - PUBLIC_HOST=mego-registro.systemagencygarciavargas.tech
+      - ADMIN_HOST=mego-admin.systemagencygarciavargas.tech
+      - APP_MODE=public
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-belsyvargas99@gmail.com}
+      - CSP_REPORT_ONLY=${CSP_REPORT_ONLY:-false}
+    volumes:
+      - mego_uploads:/app/public/uploads
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    networks:
+      - n8n_default
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=n8n_default
+      # HTTPS (router principal)
+      - traefik.http.routers.mego-force.rule=Host(`mego-registro.systemagencygarciavargas.tech`) || Host(`mego-admin.systemagencygarciavargas.tech`)
+      - traefik.http.routers.mego-force.entrypoints=websecure
+      - traefik.http.routers.mego-force.tls=true
+      - traefik.http.routers.mego-force.tls.certresolver=mytlschallenge
+      - traefik.http.routers.mego-force.service=mego-force
+      - traefik.http.routers.mego-force.middlewares=mego-force-headers@docker
+      - traefik.http.services.mego-force.loadbalancer.server.port=3000
+      # HTTP -> HTTPS
+      - traefik.http.routers.mego-force-http.rule=Host(`mego-registro.systemagencygarciavargas.tech`) || Host(`mego-admin.systemagencygarciavargas.tech`)
+      - traefik.http.routers.mego-force-http.entrypoints=web
+      - traefik.http.routers.mego-force-http.middlewares=mego-force-https@docker
+      - traefik.http.routers.mego-force-http.service=mego-force
+      - traefik.http.middlewares.mego-force-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.mego-force-https.redirectscheme.permanent=true
+      # Cabeceras extra (igual que Insublimex)
+      - traefik.http.middlewares.mego-force-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.mego-force-headers.headers.browserXSSFilter=true
+      - traefik.http.middlewares.mego-force-headers.headers.STSSeconds=31536000
+
+volumes:
+  mego_uploads:
+
+networks:
+  n8n_default:
+    external: true

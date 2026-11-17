@@ -1,0 +1,28 @@
+# Dependencias y builds
+node_modules/
+build/
+dist/
+dist-server/
+coverage/
+
+# Archivos subidos en tiempo de ejecucion (viven en el volumen de Docker)
+public/uploads/
+
+# Variables de entorno: nunca se suben (solo la plantilla)
+.env*
+!.env.example
+
+# Credenciales que nunca deben quedar en un repo publico
+service-account*.json
+*.pem
+*.key
+
+# Restos internos de AI Studio (no forman parte de la app)
+.aistudio/
+/public/assets/aistudio/Paste_November_16__2026_-_6_18PM_5b874d7d
+
+# Sistema / logs
+.DS_Store
+Thumbs.db
+*.log
+.claude/
