@@ -36,7 +36,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.4.21",
     "date-fns": "^4.4.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "eslint": "^10.15.0",
     "firebase": "^13.4.0",
     "jspdf": "^4.2.1",
@@ -52,7 +52,7 @@
     "recharts": "^3.10.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
+    "typescript": "~6.0.3",
     "vite": "^8.3.0"
   }
 }
