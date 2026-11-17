@@ -11,6 +11,8 @@ services:
     container_name: mego-force-app
     init: true
     restart: unless-stopped
+    # El servidor cierra conexiones al recibir SIGTERM (fuerza la salida a los 10 s).
+    stop_grace_period: 15s
     ports:
       - "3000:3000"
     environment:

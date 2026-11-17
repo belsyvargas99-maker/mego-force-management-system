@@ -132,17 +132,23 @@ El panel pide permiso para Google Sheets y Drive (`spreadsheets` y `drive.file`)
    - `https://mego-admin.systemagencygarciavargas.tech`
 3. No borres lo que ya esté (por ejemplo el dominio `firebaseapp.com`). Guarda.
 
-### 6.3 Restringir la clave web (apiKey)
+### 6.3 Restringir la clave web (apiKey): SOLO por API
 
-La clave de Firebase del navegador es pública por diseño, pero conviene limitar desde dónde se usa:
+La clave de Firebase del navegador es pública por diseño, pero conviene limitar **qué APIs** puede usar.
 
-1. **Credenciales** → abre la **API key** del navegador (la que empieza por `AIzaSyAk...`).
-2. **Restricciones de aplicación** → **Sitios web (referentes HTTP)** → añade:
-   - `https://mego-registro.systemagencygarciavargas.tech/*`
-   - `https://mego-admin.systemagencygarciavargas.tech/*`
-   - `https://gen-lang-client-0551519025.firebaseapp.com/*` (lo usa la ventana de login)
-   - `http://localhost:3000/*` (solo si se sigue probando en una PC)
-3. Guarda. Los cambios pueden tardar unos minutos.
+> **AVISO: NO RESTRINGIR POR REFERENTES HTTP, ROMPE EL PORTAL.**
+> El servidor también usa esta clave: consulta Firestore desde el propio contenedor (para `/api/public/contract-window` y `/api/public/validate-registration`), y esas llamadas no llevan "referente". Si eliges "Sitios web (referentes HTTP)", Google las rechaza y los clientes ven "Contrato no encontrado" en todos los enlaces de registro.
+
+1. **APIs y servicios** → **Credenciales** → abre la **API key** del navegador (la que empieza por `AIzaSyAk...`).
+2. **Restricciones de aplicación**: deja marcada **Ninguna**. No elijas "Sitios web", ni "Direcciones IP", ni "Apps".
+3. **Restricciones de API** → **Restringir clave** → marca solo estas:
+   - **Cloud Firestore API**
+   - **Identity Toolkit API** (inicio de sesión)
+   - **Token Service API** (renueva la sesión)
+   - **Firebase Installations API**
+   - **Cloud Storage for Firebase API** (la usa el panel para los mockups; si algún día se deja de usar Storage, se puede quitar)
+4. Pulsa **Guardar**. Los cambios pueden tardar unos minutos.
+5. Comprueba que todo sigue funcionando: abre un enlace de registro de un contrato activo en `https://mego-registro.systemagencygarciavargas.tech/...` y entra al panel en `https://mego-admin.systemagencygarciavargas.tech`. Si el enlace dice "Contrato no encontrado" justo después de este paso, vuelve a la clave y revisa que **Restricciones de aplicación** esté en **Ninguna**.
 
 ---
 
@@ -163,6 +169,10 @@ Antes de tocar la CSP, revisa los pasos 5 y 6: el error más común es no haber 
 - **package-lock.json**: todavía no está versionado. Actions lo genera en cada run con `npm install` y lo guarda como artefacto (`package-lock`) durante 30 días. Conviene descargarlo de un run verde y subirlo al repositorio; luego se puede cambiar `npm install` por `npm ci` en el workflow y en la primera etapa del Dockerfile para que las versiones no cambien solas.
 - **Dockerfile**: solo se instalan dependencias una vez, en la etapa de compilación. Después de lint, build y tests se ejecuta `npm prune --omit=dev` y la imagen final copia ese `node_modules` ya podado (no corre `npm ci` ni `npm install`). Por eso todo paquete que el servidor use en producción debe estar en `dependencies`, no en `devDependencies`.
 - `bun.lock` queda en el repo como referencia, pero Docker lo ignora (se usa npm).
+- **xlsx (SheetJS)**: la versión 0.18.5 de npm tiene vulnerabilidades conocidas (CVE de prototype pollution y ReDoS). Hay que pasar a SheetJS 0.20.3, que se instala desde el CDN de SheetJS (no está en el registro de npm). Hoy solo la usa `/api/import/parse`, que exige sesión de administrador.
+- **React.lazy para el panel**: el código del panel administrativo se descarga también en el portal público. Cargarlo con `React.lazy` reduce lo que baja cada cliente.
+- **Versionar package-lock.json** (ver el primer punto) y cambiar `npm install` por `npm ci`.
+- **Dependencias sin uso**: quitar `eslint` y `@firebase/eslint-plugin-security-rules` de `devDependencies` si se confirma que no se usan (el lint del proyecto es `tsc --noEmit`).
 
 ## Probarlo en una PC (opcional)
 

@@ -44,6 +44,21 @@ jobs:
       - name: Tests
         run: npm test
 
+      # npm start (dist-server/server.js) debe arrancar en produccion aunque falte NODE_ENV.
+      - name: Prueba de npm start sin NODE_ENV
+        run: |
+          log="$RUNNER_TEMP/npm-start.log"
+          env -u NODE_ENV PORT=3100 npm start > "$log" 2>&1 &
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3100/api/health > /dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          pkill -f "dist-server/server.js" || true
+          cat "$log"
+          [ -n "$ok" ] || { echo "npm start no respondio a /api/health"; exit 1; }
+          grep -q "(production)" "$log" || { echo "npm start no arranco en modo produccion"; exit 1; }
+
       # Guarda el package-lock.json generado para poder versionarlo despues.
       - name: Guardar package-lock.json generado
         uses: actions/upload-artifact@v4
