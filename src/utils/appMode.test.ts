@@ -5,6 +5,7 @@ import {
   canAccessAdmin,
   canAccessPublicPortal,
   isAdminPath,
+  isApiPath,
   isLocalDevHost,
   isPublicApiPath,
   normalizeHostname,
@@ -73,6 +74,18 @@ describe('helpers de rutas y hosts', () => {
     assert.equal(isPublicApiPath('/api/contracts/reconcile-schedules'), false);
     assert.equal(isPublicApiPath('/api/publicity'), false);
     assert.equal(isPublicApiPath('/api/health/extra'), false);
+  });
+
+  it('isApiPath e isPublicApiPath no distinguen mayúsculas (igual que Express)', () => {
+    assert.equal(isApiPath('/api'), true);
+    assert.equal(isApiPath('/API/sheets/create-spreadsheet'), true);
+    assert.equal(isApiPath('/Api/uploads/mockup'), true);
+    assert.equal(isApiPath('/apis'), false);
+    assert.equal(isApiPath('/registro/abc'), false);
+    assert.equal(isPublicApiPath('/API/health'), true);
+    assert.equal(isPublicApiPath('/Api/Public/contract-window/x'), true);
+    assert.equal(isPublicApiPath('/API/sheets/sync-contract'), false);
+    assert.equal(isPublicApiPath('/API/uploads/mockup'), false);
   });
 
   it('isAdminPath no confunde /administracion', () => {

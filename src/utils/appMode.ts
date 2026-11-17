@@ -80,9 +80,21 @@ export function canAccessPublicPortal(mode: AppMode): boolean {
   return mode === 'public' || mode === 'all';
 }
 
-/** Rutas de API que se permiten desde el host público. */
+/**
+ * /api o /api/lo-que-sea, sin distinguir mayúsculas (Express enruta /API/... igual
+ * que /api/...).
+ */
+export function isApiPath(pathname: string): boolean {
+  const p = String(pathname || '').toLowerCase();
+  return p === '/api' || p.startsWith('/api/');
+}
+
+/**
+ * Rutas de API que se permiten desde el host público. No distingue mayúsculas,
+ * igual que el enrutado de Express.
+ */
 export function isPublicApiPath(pathname: string): boolean {
-  const p = String(pathname || '');
+  const p = String(pathname || '').toLowerCase();
   return p === '/api/health' || p === '/api/public' || p.startsWith('/api/public/');
 }
 

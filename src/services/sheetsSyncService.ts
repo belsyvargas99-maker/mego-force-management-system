@@ -9,7 +9,7 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { db, getGoogleAccessToken } from '../config/firebase';
+import { db, getGoogleAccessToken, getSheetsRequestHeaders } from '../config/firebase';
 import type { Contract, Registration, SyncJob, SyncJobStatus } from '../types/mego';
 import { generateEntityId } from '../utils/normalizers';
 import { recordAuditLog } from './auditService';
@@ -65,10 +65,7 @@ export async function createSpreadsheetForContract(
 
   const res = await fetch('/api/sheets/create-spreadsheet', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: await getSheetsRequestHeaders(token),
     body: JSON.stringify({
       contractTitle: contract.title,
       contractCode: contract.contractCode,
@@ -163,10 +160,7 @@ export async function syncContractToGoogleSheets(
   try {
     const res = await fetch('/api/sheets/sync-contract', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers: await getSheetsRequestHeaders(token),
       body: JSON.stringify({
         spreadsheetId,
         contractTitle: contract.title,

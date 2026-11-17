@@ -132,6 +132,53 @@ describe('Host público: panel y APIs internas bloqueadas', () => {
     }
   });
 
+  // Express enruta sin distinguir mayúsculas: /API/... llega a las mismas rutas que /api/...
+  const UPPERCASE_ADMIN_API_CALLS: { path: string; body: unknown; auth: Record<string, string> }[] = [
+    { path: '/API/uploads/mockup', body: ADMIN_API_CALLS[0].body, auth: ADMIN_AUTH },
+    {
+      path: '/Api/sheets/sync-contract',
+      body: { spreadsheetId: 'x' },
+      auth: { Authorization: 'Bearer x', 'X-Firebase-Token': ADMIN_TOKEN },
+    },
+    { path: '/API/contracts/reconcile-schedules', body: { contracts: [] }, auth: ADMIN_AUTH },
+    {
+      path: '/API/sheets/create-spreadsheet',
+      body: {},
+      auth: { Authorization: 'Bearer x', 'X-Firebase-Token': ADMIN_TOKEN },
+    },
+    { path: '/Api/Import/Parse', body: ADMIN_API_CALLS[1].body, auth: ADMIN_AUTH },
+    { path: '/API', body: {}, auth: ADMIN_AUTH },
+  ];
+  for (const call of UPPERCASE_ADMIN_API_CALLS) {
+    it(`POST ${call.path} (mayúsculas) desde el host público -> 404 aunque traiga token de admin`, async () => {
+      const res = await fetch(`${baseUrl}${call.path}`, {
+        method: 'POST',
+        headers: onHost(PUBLIC_HOST, { 'Content-Type': 'application/json', ...call.auth }),
+        body: JSON.stringify(call.body),
+      });
+      assert.equal(res.status, 404);
+      assert.match(res.headers.get('content-type') || '', /application\/json/);
+    });
+  }
+
+  it('control: /API/uploads/mockup en el host admin sí llega a la ruta (401 sin token)', async () => {
+    const res = await fetch(`${baseUrl}/API/uploads/mockup`, {
+      method: 'POST',
+      headers: onHost(ADMIN_HOST, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify(ADMIN_API_CALLS[0].body),
+    });
+    assert.equal(res.status, 401);
+  });
+
+  it('/API/health y /API/public/* (mayúsculas) siguen permitidas en el host público', async () => {
+    const health = await fetch(`${baseUrl}/API/health`, { headers: onHost(PUBLIC_HOST) });
+    assert.equal(health.status, 200);
+    const win = await fetch(`${baseUrl}/Api/Public/contract-window/MF-2026-TOKEN123?mode=individual`, {
+      headers: onHost(PUBLIC_HOST),
+    });
+    assert.equal(win.status, 200);
+  });
+
   it('un host desconocido se trata como público', async () => {
     const res = await fetch(`${baseUrl}/api/import/parse`, {
       method: 'POST',
@@ -185,6 +232,53 @@ describe('APIs de admin exigen Firebase ID token de un administrador', () => {
     });
   }
 
+  for (const p of ['/api/sheets/create-spreadsheet', '/api/sheets/sync-contract']) {
+    it(`POST ${p} sin X-Firebase-Token -> 401 (aunque traiga token de Google)`, async () => {
+      const res = await fetch(`${baseUrl}${p}`, {
+        method: 'POST',
+        headers: onHost(ADMIN_HOST, { 'Content-Type': 'application/json', Authorization: 'Bearer google-oauth' }),
+        body: JSON.stringify({ spreadsheetId: 'x' }),
+      });
+      assert.equal(res.status, 401);
+    });
+
+    it(`POST ${p} con X-Firebase-Token inválido -> 401`, async () => {
+      const res = await fetch(`${baseUrl}${p}`, {
+        method: 'POST',
+        headers: onHost(ADMIN_HOST, {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer google-oauth',
+          'X-Firebase-Token': 'basura',
+        }),
+        body: JSON.stringify({ spreadsheetId: 'x' }),
+      });
+      assert.equal(res.status, 401);
+    });
+
+    it(`POST ${p} con usuario que no es admin -> 403`, async () => {
+      const res = await fetch(`${baseUrl}${p}`, {
+        method: 'POST',
+        headers: onHost(ADMIN_HOST, {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer google-oauth',
+          'X-Firebase-Token': NON_ADMIN_TOKEN,
+        }),
+        body: JSON.stringify({ spreadsheetId: 'x' }),
+      });
+      assert.equal(res.status, 403);
+    });
+
+    it(`POST ${p} con admin pero sin token de Google -> 401 de Sheets (no llama a Google)`, async () => {
+      const res = await fetch(`${baseUrl}${p}`, {
+        method: 'POST',
+        headers: onHost(ADMIN_HOST, { 'Content-Type': 'application/json', 'X-Firebase-Token': ADMIN_TOKEN }),
+        body: JSON.stringify({ spreadsheetId: 'x' }),
+      });
+      assert.equal(res.status, 401);
+      assert.match((await res.json()).error, /Google/);
+    });
+  }
+
   it('POST /api/import/parse con admin analiza un CSV', async () => {
     const csv = Buffer.from('Nombre,Talla\nAna,M\nLuis,L\n', 'utf8').toString('base64');
     const res = await fetch(`${baseUrl}/api/import/parse`, {
@@ -196,6 +290,47 @@ describe('APIs de admin exigen Firebase ID token de un administrador', () => {
     const body = await res.json();
     assert.deepEqual(body.headers, ['Nombre', 'Talla']);
     assert.equal(body.rows.length, 2);
+  });
+});
+
+describe('Rate limit de las rutas de admin', () => {
+  let limitedServer: http.Server;
+  let limitedUrl = '';
+
+  before(async () => {
+    const app = createApp({
+      resolvePublicContract: async () => null,
+      verifyIdToken: fakeVerifyIdToken,
+      isAdminUser: async (user) => user.email === 'admin@test.local',
+      hostConfig: { publicHost: PUBLIC_HOST, adminHost: ADMIN_HOST },
+      adminRateLimitMax: 2,
+    });
+    limitedServer = app.listen(0, '127.0.0.1');
+    await new Promise<void>((resolve) => limitedServer.once('listening', () => resolve()));
+    const addr = limitedServer.address();
+    if (addr && typeof addr === 'object') limitedUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  after(async () => {
+    if (limitedServer) await new Promise<void>((resolve) => limitedServer.close(() => resolve()));
+  });
+
+  it('pasado el límite por minuto responde 429, también en /api/sheets/*', async () => {
+    const call = (p: string, headers: Record<string, string>) =>
+      fetch(`${limitedUrl}${p}`, {
+        method: 'POST',
+        headers: onHost(ADMIN_HOST, { 'Content-Type': 'application/json', ...headers }),
+        body: JSON.stringify({ contracts: [] }),
+      });
+    assert.equal((await call('/api/contracts/reconcile-schedules', ADMIN_AUTH)).status, 200);
+    assert.equal((await call('/api/contracts/reconcile-schedules', ADMIN_AUTH)).status, 200);
+    assert.equal((await call('/api/contracts/reconcile-schedules', ADMIN_AUTH)).status, 429);
+    assert.equal((await call('/api/sheets/sync-contract', { 'X-Firebase-Token': ADMIN_TOKEN })).status, 429);
+  });
+
+  it('las rutas públicas no consumen el límite de admin', async () => {
+    const res = await fetch(`${limitedUrl}/api/health`, { headers: onHost(ADMIN_HOST) });
+    assert.equal(res.status, 200);
   });
 });
 
@@ -326,6 +461,39 @@ describe('createFirebaseIdTokenVerifier (firma RS256 con crypto nativo)', () => 
     ['no es un JWT', () => 'abc.def', 401],
   ];
 
+  it('un kid desconocido fuerza recargar certificados como mucho una vez cada 60 s', async () => {
+    let fakeNow = Date.now();
+    let fetches = 0;
+    const limitedVerify = createFirebaseIdTokenVerifier({
+      projectId: PROJECT,
+      now: () => fakeNow,
+      fetchCerts: async () => {
+        fetches += 1;
+        return { certs: { 'kid-1': publicPem }, expiresAt: fakeNow + 6 * 3600_000 };
+      },
+    });
+    const unknownKid = () => signToken(goodClaims, { kid: 'kid-desconocido' });
+    const expect401 = async () =>
+      assert.rejects(limitedVerify(unknownKid()), (err: unknown) => {
+        assert.ok(err instanceof AdminAuthError);
+        assert.equal(err.status, 401);
+        return true;
+      });
+
+    await expect401();
+    assert.equal(fetches, 2, 'descarga inicial + una recarga forzada');
+    for (let i = 0; i < 20; i += 1) await expect401();
+    assert.equal(fetches, 2, 'sin nuevas descargas dentro de los 60 s');
+
+    fakeNow += 61_000;
+    await expect401();
+    assert.equal(fetches, 3, 'pasados 60 s se permite otra recarga forzada');
+
+    // Un token bueno sigue validando con el caché, sin descargas extra.
+    await limitedVerify(signToken(goodClaims));
+    assert.equal(fetches, 3);
+  });
+
   for (const [label, makeToken, status] of rejectCases) {
     it(`rechaza: ${label}`, async () => {
       await assert.rejects(verify(makeToken()), (err: unknown) => {
@@ -366,6 +534,8 @@ describe('createAdminResolver', () => {
       fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
         const headers = (init?.headers || {}) as Record<string, string>;
         seen.push({ url: String(url), auth: String(headers.Authorization || '') });
+        // Toda llamada a Firestore lleva un timeout (AbortSignal.timeout).
+        assert.ok(init?.signal instanceof AbortSignal, 'fetch sin AbortSignal');
         return jsonResponse({ fields: { active: { booleanValue: true } } }, 200);
       }) as typeof fetch,
     });
@@ -394,6 +564,22 @@ describe('createAdminResolver', () => {
       });
       assert.equal(await resolver(user('nadie@example.com'), 't'), false);
     }
+  });
+
+  it('Firestore que no responde (timeout / error de red) -> 503, nunca concede acceso', async () => {
+    const resolver = createAdminResolver({
+      adminEmails: [],
+      projectId: 'p',
+      databaseId: 'd',
+      fetchImpl: (async () => {
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      }) as typeof fetch,
+    });
+    await assert.rejects(resolver(user('nadie@example.com'), 't'), (err: unknown) => {
+      assert.ok(err instanceof AdminAuthError);
+      assert.equal(err.status, 503);
+      return true;
+    });
   });
 
   it('Firestore caído -> error 503 (nunca concede acceso)', async () => {

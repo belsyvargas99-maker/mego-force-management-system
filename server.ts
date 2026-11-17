@@ -14,6 +14,7 @@ import {
   createFirebaseIdTokenVerifier,
   DEFAULT_FIREBASE_PROJECT_ID,
   DEFAULT_FIRESTORE_DATABASE_ID,
+  OUTBOUND_FETCH_TIMEOUT_MS,
   parseAdminEmails,
   type AdminResolver,
   type IdTokenVerifier,
@@ -106,7 +107,9 @@ export async function fetchPublicContractFromFirestoreRest(
   )}?key=${encodeURIComponent(cfg.apiKey)}`;
 
   try {
-    const res = await fetch(url);
+    // Llamada servidor -> Firestore REST con ?key= y SIN cabecera Referer: por eso la
+    // apiKey no puede tener restricción de "referentes HTTP" (ver DEPLOY.md, paso 6.3).
+    const res = await fetch(url, { signal: AbortSignal.timeout(OUTBOUND_FETCH_TIMEOUT_MS) });
     if (!res.ok) return null;
     const doc = await res.json();
     const fields = doc?.fields;
@@ -214,7 +217,29 @@ export interface CreateAppOptions {
   /** Enviar Content-Security-Policy (solo con el build de producción). */
   csp?: boolean;
   cspReportOnly?: boolean;
+  /**
+   * Rate limit de las rutas de admin (peticiones por minuto y por IP).
+   * Por defecto ADMIN_RATE_LIMIT_MAX del entorno o 120. false lo desactiva.
+   */
+  adminRateLimitMax?: number | false;
 }
+
+/** Cabecera con el Firebase ID token del admin en las rutas /api/sheets/*. */
+export const FIREBASE_TOKEN_HEADER = 'x-firebase-token';
+
+const DEFAULT_ADMIN_RATE_LIMIT_MAX = 120;
+
+function adminRateLimitFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.ADMIN_RATE_LIMIT_MAX);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_ADMIN_RATE_LIMIT_MAX;
+}
+
+/**
+ * true cuando se ejecuta el bundle compilado (dist-server/server.js), p. ej. con
+ * `npm start`. Ese bundle siempre corre en modo producción: nunca intenta levantar Vite.
+ */
+export const IS_BUNDLED_SERVER =
+  path.basename(path.dirname(fileURLToPath(import.meta.url))) === 'dist-server';
 
 // Track recently evaluated contract schedule transitions inside server process
 let lastSchedulerCheckAt = new Date().toISOString();
@@ -276,14 +301,18 @@ export function createApp(options: CreateAppOptions = {}) {
 
   const jsonBody = express.json({ limit: JSON_BODY_LIMIT });
 
-  /** Exige un Firebase ID token válido de un administrador (Authorization: Bearer). */
-  const requireAdmin: express.RequestHandler = async (req, res, next) => {
-    const header = req.headers.authorization || '';
-    const match = header.match(/^Bearer\s+(.+)$/i);
-    if (!match) {
+  /**
+   * Exige un Firebase ID token válido de un administrador. `readIdToken` dice de qué
+   * cabecera sale: Authorization: Bearer (rutas normales) o X-Firebase-Token (rutas
+   * /api/sheets/*, donde Authorization lleva el token OAuth de Google).
+   */
+  const makeRequireAdmin = (
+    readIdToken: (req: express.Request) => string | null
+  ): express.RequestHandler => async (req, res, next) => {
+    const idToken = readIdToken(req);
+    if (!idToken) {
       return res.status(401).json({ error: 'Inicia sesión como administrador para continuar.' });
     }
-    const idToken = match[1].trim();
     try {
       const user = await verifyIdToken(idToken);
       const ok = await isAdminUser(user, idToken);
@@ -299,6 +328,37 @@ export function createApp(options: CreateAppOptions = {}) {
       return res.status(401).json({ error: 'Sesión inválida o expirada.' });
     }
   };
+
+  /** Firebase ID token del admin en Authorization: Bearer. */
+  const requireAdmin = makeRequireAdmin((req) => {
+    const match = String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() || null : null;
+  });
+
+  /** Firebase ID token del admin en X-Firebase-Token (rutas de Google Sheets). */
+  const requireAdminFirebaseHeader = makeRequireAdmin((req) => {
+    const raw = req.headers[FIREBASE_TOKEN_HEADER];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const token = String(value || '').trim().replace(/^Bearer\s+/i, '');
+    return token || null;
+  });
+
+  // Rate limit moderado para las rutas de admin (por IP; detrás de Traefik req.ip
+  // sale de X-Forwarded-For). Va antes de verificar el token.
+  const adminRateLimitMax =
+    options.adminRateLimitMax === undefined ? adminRateLimitFromEnv() : options.adminRateLimitMax;
+  const adminLimiter: express.RequestHandler =
+    adminRateLimitMax === false
+      ? (_req, _res, next) => next()
+      : rateLimit({
+          windowMs: 60 * 1000,
+          limit: adminRateLimitMax,
+          standardHeaders: true,
+          legacyHeaders: false,
+          message: {
+            error: 'Demasiadas solicitudes al panel desde esta conexión. Intenta nuevamente en un minuto.',
+          },
+        });
 
   // Serve uploaded mockups statically (un SVG subido nunca ejecuta scripts)
   app.use(
@@ -368,7 +428,7 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   // Backend schedule reconciler: evaluates current schedule state transitions across contracts
-  app.post('/api/contracts/reconcile-schedules', requireAdmin, jsonBody, (req, res) => {
+  app.post('/api/contracts/reconcile-schedules', adminLimiter, requireAdmin, jsonBody, (req, res) => {
     const items = Array.isArray(req.body?.contracts) ? req.body.contracts : [];
     const nowMs = Date.now();
     lastSchedulerCheckAt = new Date(nowMs).toISOString();
@@ -547,7 +607,7 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   // Upload mockup image safely (validates MIME and max 5MB)
-  app.post('/api/uploads/mockup', requireAdmin, jsonBody, (req, res) => {
+  app.post('/api/uploads/mockup', adminLimiter, requireAdmin, jsonBody, (req, res) => {
     try {
       const { fileName, dataUrl } = req.body as { fileName?: string; dataUrl?: string };
       if (!fileName || !dataUrl || typeof dataUrl !== 'string') {
@@ -587,7 +647,7 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   // Parse XLSX, CSV, or DOCX files into tabular preview rows for admin & bulk import
-  app.post('/api/import/parse', requireAdmin, jsonBody, async (req, res) => {
+  app.post('/api/import/parse', adminLimiter, requireAdmin, jsonBody, async (req, res) => {
     try {
       const { fileName, base64 } = req.body as { fileName?: string; base64?: string };
       if (!fileName || !base64) {
@@ -651,8 +711,9 @@ export function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  // Google Sheets: Create independent spreadsheet for a contract
-  app.post('/api/sheets/create-spreadsheet', jsonBody, async (req, res) => {
+  // Google Sheets: Create independent spreadsheet for a contract.
+  // X-Firebase-Token: ID token del admin. Authorization: token OAuth de Google que se reenvía.
+  app.post('/api/sheets/create-spreadsheet', adminLimiter, requireAdminFirebaseHeader, jsonBody, async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
@@ -712,8 +773,9 @@ export function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  // Google Sheets: Synchronize chronological, per-size, and summary tabs
-  app.post('/api/sheets/sync-contract', jsonBody, async (req, res) => {
+  // Google Sheets: Synchronize chronological, per-size, and summary tabs.
+  // X-Firebase-Token: ID token del admin. Authorization: token OAuth de Google que se reenvía.
+  app.post('/api/sheets/sync-contract', adminLimiter, requireAdminFirebaseHeader, jsonBody, async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
@@ -972,6 +1034,16 @@ const jsonErrorHandler: express.ErrorRequestHandler = (err, _req, res, next) => 
 };
 
 export async function startServer() {
+  // `npm start` ejecuta dist-server/server.js: siempre producción, aunque falte
+  // NODE_ENV (funciona igual en Windows, Linux y Docker, sin cross-env).
+  if (IS_BUNDLED_SERVER && process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV) {
+      console.warn(
+        `[server] NODE_ENV=${process.env.NODE_ENV} ignorado: el build compilado siempre corre en producción.`
+      );
+    }
+    process.env.NODE_ENV = 'production';
+  }
   const isProduction = process.env.NODE_ENV === 'production';
   const app = createApp({
     spaDistPath: isProduction ? path.resolve(process.cwd(), 'dist') : undefined,

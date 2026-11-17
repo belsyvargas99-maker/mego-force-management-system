@@ -4,6 +4,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import {
   isAdminPath,
+  isApiPath,
   isPublicApiPath,
   resolveAppMode,
   type AppMode,
@@ -120,8 +121,10 @@ export function hostModeGuard(hostConfig: HostModeConfig): RequestHandler {
 
     if (mode !== 'public') return next();
 
-    const pathname = req.path;
-    if (pathname === '/api' || pathname.startsWith('/api/')) {
+    // Express enruta sin distinguir mayúsculas (/API/sheets == /api/sheets), así que
+    // toda decisión de ruta de esta guardia se toma sobre la ruta en minúsculas.
+    const pathname = req.path.toLowerCase();
+    if (isApiPath(pathname)) {
       if (!isPublicApiPath(pathname)) {
         return res.status(404).json({ error: 'Recurso no encontrado.' });
       }

@@ -67,17 +67,38 @@ export async function signInWithGoogleAdmin(withWorkspaceScopes = false): Promis
 }
 
 /**
- * Cabecera Authorization con el Firebase ID token del admin conectado.
- * El servidor la exige en /api/uploads/mockup, /api/import/parse y
- * /api/contracts/reconcile-schedules. getIdToken() renueva el token si está por vencer.
+ * Firebase ID token del admin conectado. getIdToken() lo renueva si está por vencer.
  */
-export async function getAdminAuthHeaders(): Promise<Record<string, string>> {
+export async function getAdminIdToken(): Promise<string> {
   const user = auth.currentUser;
   if (!user) {
     throw new Error('Tu sesión de administrador expiró. Vuelve a iniciar sesión.');
   }
-  const idToken = await user.getIdToken();
+  return user.getIdToken();
+}
+
+/**
+ * Cabecera Authorization con el Firebase ID token del admin conectado.
+ * El servidor la exige en /api/uploads/mockup, /api/import/parse y
+ * /api/contracts/reconcile-schedules.
+ */
+export async function getAdminAuthHeaders(): Promise<Record<string, string>> {
+  const idToken = await getAdminIdToken();
   return { Authorization: `Bearer ${idToken}` };
+}
+
+/**
+ * Cabeceras para /api/sheets/*: Authorization lleva el token OAuth de Google (el
+ * servidor lo reenvía a la API de Sheets) y X-Firebase-Token el ID token del admin,
+ * que el servidor verifica igual que en las demás rutas de admin.
+ */
+export async function getSheetsRequestHeaders(googleAccessToken: string): Promise<Record<string, string>> {
+  const idToken = await getAdminIdToken();
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${googleAccessToken}`,
+    'X-Firebase-Token': idToken,
+  };
 }
 
 export async function signOutAdmin(): Promise<void> {

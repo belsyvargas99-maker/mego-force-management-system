@@ -22,6 +22,16 @@ export const DEFAULT_FIREBASE_PROJECT_ID = 'gen-lang-client-0551519025';
 export const DEFAULT_FIRESTORE_DATABASE_ID = 'ai-studio-3597d09b-0266-4bf3-9b3e-a6dc952c1277';
 export const DEFAULT_ADMIN_EMAILS = ['belsyvargas99@gmail.com'];
 
+/** Tiempo máximo de espera de cada llamada a Google (certificados, Firestore). */
+export const OUTBOUND_FETCH_TIMEOUT_MS = 5000;
+
+/**
+ * Un `kid` desconocido fuerza descargar los certificados de nuevo (Google rota las
+ * claves). Para que un atacante no pueda provocar una descarga por petición, la
+ * recarga forzada se hace como mucho una vez cada 60 s.
+ */
+export const FORCED_CERT_REFRESH_MIN_INTERVAL_MS = 60_000;
+
 export interface VerifiedFirebaseUser {
   uid: string;
   email: string;
@@ -76,7 +86,14 @@ export type CertFetcher = () => Promise<CertSet>;
 
 /** Descarga los certificados públicos de Firebase Auth respetando Cache-Control. */
 export async function fetchSecureTokenCerts(): Promise<CertSet> {
-  const res = await fetch(SECURETOKEN_CERTS_URL);
+  let res: Response;
+  try {
+    res = await fetch(SECURETOKEN_CERTS_URL, {
+      signal: AbortSignal.timeout(OUTBOUND_FETCH_TIMEOUT_MS),
+    });
+  } catch {
+    throw new AdminAuthError(503, 'No se pudieron obtener los certificados de Firebase.');
+  }
   if (!res.ok) {
     throw new AdminAuthError(503, 'No se pudieron obtener los certificados de Firebase.');
   }
@@ -93,6 +110,8 @@ export interface TokenVerifierOptions {
   now?: () => number;
   /** Tolerancia de reloj en segundos para iat / exp / auth_time. */
   clockSkewSec?: number;
+  /** Mínimo entre dos recargas forzadas de certificados (por defecto 60 s). */
+  forcedRefreshMinIntervalMs?: number;
 }
 
 export function createFirebaseIdTokenVerifier(options: TokenVerifierOptions): IdTokenVerifier {
@@ -102,11 +121,23 @@ export function createFirebaseIdTokenVerifier(options: TokenVerifierOptions): Id
   const skewMs = (options.clockSkewSec ?? 60) * 1000;
   const expectedIssuer = `https://securetoken.google.com/${projectId}`;
 
+  const forcedRefreshMinIntervalMs =
+    options.forcedRefreshMinIntervalMs ?? FORCED_CERT_REFRESH_MIN_INTERVAL_MS;
+
   let cache: CertSet | null = null;
   let inflight: Promise<CertSet> | null = null;
+  let lastForcedRefreshAt = Number.NEGATIVE_INFINITY;
 
   async function getCerts(forceRefresh = false): Promise<Record<string, string>> {
-    if (!forceRefresh && cache && cache.expiresAt > now()) return cache.certs;
+    if (forceRefresh && cache) {
+      // Recarga forzada limitada: si hubo otra hace menos de 60 s, usa el caché.
+      if (now() - lastForcedRefreshAt < forcedRefreshMinIntervalMs) {
+        return inflight ? (await inflight).certs : cache.certs;
+      }
+      lastForcedRefreshAt = now();
+    } else if (cache && cache.expiresAt > now()) {
+      return cache.certs;
+    }
     if (!inflight) {
       inflight = fetchCerts()
         .then((set) => {
@@ -137,7 +168,8 @@ export function createFirebaseIdTokenVerifier(options: TokenVerifierOptions): Id
     let certs = await getCerts();
     let pem = certs[header.kid];
     if (!pem) {
-      // Google rota las claves: reintenta una vez con certificados frescos.
+      // Google rota las claves: reintenta una vez con certificados frescos
+      // (como mucho una recarga forzada cada 60 s).
       certs = await getCerts(true);
       pem = certs[header.kid];
     }
@@ -224,7 +256,10 @@ export function createAdminResolver(options: AdminResolverOptions): AdminResolve
 
     let res: Response;
     try {
-      res = await doFetch(url, { headers: { Authorization: `Bearer ${idToken}` } });
+      res = await doFetch(url, {
+        headers: { Authorization: `Bearer ${idToken}` },
+        signal: AbortSignal.timeout(OUTBOUND_FETCH_TIMEOUT_MS),
+      });
     } catch {
       throw new AdminAuthError(503, 'No se pudo verificar los permisos de administrador.');
     }
