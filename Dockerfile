@@ -13,8 +13,7 @@ ENV VITE_PUBLIC_HOST=${VITE_PUBLIC_HOST} \
     VITE_ADMIN_HOST=${VITE_ADMIN_HOST} \
     VITE_APP_MODE=${VITE_APP_MODE}
 
-# Aun no hay package-lock.json versionado: npm install genera uno aqui
-# y la etapa final lo reutiliza para instalar exactamente las mismas versiones.
+# Aun no hay package-lock.json versionado: npm install genera uno aqui.
 COPY package*.json ./
 RUN npm install --no-audit --no-fund
 
@@ -23,16 +22,23 @@ RUN npm run lint \
  && npm run build \
  && npm test
 
+# Quita las dependencias de desarrollo (vite, tailwind, tsx, etc.) para que la
+# etapa final copie node_modules ya listo, sin volver a instalar nada.
+# El servidor (dist-server/server.js) solo importa en produccion paquetes de
+# "dependencies" (express, express-rate-limit, zod, xlsx, mammoth).
+RUN npm prune --omit=dev --no-audit --no-fund \
+ && npm cache clean --force
+
 # ---------- Etapa 2: imagen final, solo produccion ----------
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000
 
+# Sin npm ci ni npm install aqui: se reutiliza node_modules ya podado en la etapa
+# de compilacion (misma imagen base, asi que los binarios nativos coinciden).
 COPY --from=builder /app/package.json /app/package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund \
- && npm cache clean --force
-
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/dist-server ./dist-server
 COPY --from=builder /app/firebase-applet-config.json ./firebase-applet-config.json
